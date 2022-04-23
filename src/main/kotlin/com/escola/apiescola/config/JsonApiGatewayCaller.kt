@@ -4,6 +4,8 @@ import com.amazonaws.*
 import com.amazonaws.auth.AWS4Signer
 import com.amazonaws.auth.AWSStaticCredentialsProvider
 import com.amazonaws.auth.BasicAWSCredentials
+import com.amazonaws.auth.EnvironmentVariableCredentialsProvider
+import com.amazonaws.auth.profile.ProfilesConfigFile
 import com.amazonaws.http.ExecutionContext
 import com.amazonaws.http.HttpMethodName
 import com.amazonaws.http.JsonErrorResponseHandler
@@ -26,28 +28,12 @@ import javax.annotation.PostConstruct
 
 
 @Service
-class JsonApiGatewayCaller : AmazonWebServiceClient(ClientConfiguration()) {
+class JsonApiGatewayCaller(val configProperties: ConfigProperties) : AmazonWebServiceClient(ClientConfiguration()) {
 
-    @Value(value = "\${AWS_IAM_ACCESS_KEY}")
-    lateinit var accessKey : String
-
-    @Value(value = "\${AWS_IAM_SECRET_ACCESS_KEY}")
-    lateinit var secretAccessKey : String
-
-    @Value(value = "\${AWS_REGION}")
-    lateinit var region : String
-
-    @Value(value = "\${AWS_URI}")
-    lateinit var uriBase : String
-
-    @Value(value = "\${AWS_SERVICE_KEY}")
-    lateinit var serviceKey : String
-
-//    lateinit var defaultErrorUnmarshaller : JsonErrorUnmarshaller
 
     lateinit var endpointURI : URI
 
-   lateinit var credentials : AWSStaticCredentialsProvider
+    lateinit var credentials : AWSStaticCredentialsProvider
 
     lateinit var errorHandler: JsonErrorResponseHandler
 
@@ -57,13 +43,13 @@ class JsonApiGatewayCaller : AmazonWebServiceClient(ClientConfiguration()) {
 
     @PostConstruct
     fun init() {
-        endpointURI  = URI.create(uriBase)
+        endpointURI  = URI.create(configProperties.uriBase)
 
-        credentials = AWSStaticCredentialsProvider(BasicAWSCredentials(accessKey, secretAccessKey))
+        credentials = AWSStaticCredentialsProvider(ProfilesConfigFile(configProperties.fileLocation).getCredentials("default"))
 
         signer = AWS4Signer().apply {
-            serviceName = serviceKey
-            regionName = region
+            serviceName = configProperties.serviceKey
+            regionName = configProperties.region
         }
         val metadata = JsonOperationMetadata().withHasStreamingSuccessResponse(false).withPayloadJson(false)
         val responseUnmarshaller: Unmarshaller<ApiGatewayResponse, JsonUnmarshallerContext> =
@@ -92,7 +78,7 @@ class JsonApiGatewayCaller : AmazonWebServiceClient(ClientConfiguration()) {
     }
 
     internal fun prepareRequest(method : HttpMethodName, resourcePathValue : String, contentValue : InputStream) : DefaultRequest<String> {
-        return DefaultRequest<String>(serviceKey).apply {
+        return DefaultRequest<String>(configProperties.serviceKey).apply {
             httpMethod = HttpMethodName.POST
             content = contentValue
             endpoint = endpointURI
